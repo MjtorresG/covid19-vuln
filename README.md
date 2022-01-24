@@ -4,5 +4,5 @@ The COVID-19 pandemic has impacted many communities globally, especially sociall
 
 `ypll` – exploring the YPLL due to COVID-19 in Hispanics in the U.S. vs Puerto Rico
 
-YPLL will be calculated according to: Centers for Disease Control and Prevention. (2006). Principles of Epidemiology in Public Health 
+All rates are calculated according to: Centers for Disease Control and Prevention. (2006). Principles of Epidemiology in Public Health 
 Practice. (3rd ed.). https://www.cdc.gov/csels/dsepd/ss1978/index.html
