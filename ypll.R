@@ -4,20 +4,9 @@ library("tidyverse")
 library("lubridate")
 library("scales")
 library("epiR")
+library("gtsummary")     
 
 json_file <- "https://bioportal.salud.pr.gov/api/administration/reports/deaths/summary"
-
-#cases by region
-json_file1 <- "https://bioportal.salud.pr.gov/api/administration/reports/cases/dashboard-region"
-url1 <- jsonlite::fromJSON(json_file1)
-
-#cases by age-group and sex
-json_file2 <- "https://bioportal.salud.pr.gov/api/administration/reports/cases/dashboard-age-group"
-url2 <- jsonlite::fromJSON(json_file2)
-
-#code that does not work:
-#json_file2 <- "https://bioportal.salud.pr.gov/api/administration/reports/minimal-info-unique-tests"
-#url3 <- jsonlite::fromJSON(json_file3)
 
 first_day <- make_date(2020, 3, 12)
 
@@ -410,7 +399,7 @@ pop_est_hispanics <- function(x) {
   return(result)
 }
 
-ypll_us<-ypll_us %>% filter(ageRange!="0",ageRange!="1 to 4") %>%
+ypll_us2<- ypll_us %>% filter(ageRange!="0",ageRange!="1 to 4") %>%
   arrange(factor(ageRange, levels = ages3)) %>%
   mutate(age_start = as.numeric(str_extract(ageRange, "^\\d+")), 
          age_end = as.numeric(str_extract(ageRange, "\\d+$"))) %>%
@@ -418,17 +407,77 @@ ypll_us<-ypll_us %>% filter(ageRange!="0",ageRange!="1 to 4") %>%
   mutate(ypll = if_else(ypll < 0, 0, ypll)) %>%
   group_by(ageRange) %>%
   summarize(ypll = sum(ypll), .groups = "drop") %>%
-  mutate(st_pop = lapply(ageRange, st_pop_function2)) %>%
-  mutate(pop_est = lapply(ageRange, pop_est_hispanics))
+  mutate(st_pop = lapply(ageRange, st_pop_function2),
+         pop_est = lapply(ageRange, pop_est_hispanics),
+         population = rep("US",times=10)) %>%
+  select(-ageRange)
 
-
-#Adjusting PR YPLL to fit ageRanges
-pop_est_total_pr <- pop_est_by_region %>% ungroup() %>% group_by(ageRange,.add = T) %>% summarize(pop_est = sum(pop_est), .groups = "drop") 
+#adding total PR YPLL and adjusting ageRanges
+pop_est_pr <- function(x) {
+  if (x == "0 to 4") {
+    result <- 117482
+  } else if (x == "5 to 14") {
+    result <- 340425
+  } else if (x == "15 to 24") {
+    result <- 418101
+  } else if (x == "25 to 34") {
+    result <- 405166
+  } else if (x == "35 to 44") {
+    result <- 388383
+  } else if (x == "45 to 54") {
+    result <- 416055
+  } else if (x == "55 to 64") {
+    result <- 428426
+  } else if (x == "65 to 74") {
+    result <- 366490
+  } else if (x == "75 to 84") {
+    result <- 221970
+  } else {
+    result <- 91196
+  }
+  return(result)
+}
 
 ypll_total_pr <- merged2 %>% ungroup() %>% group_by(ageRange,.add = T) %>% summarize(ypll = sum(ypll), .groups = "drop") 
 
-ypll_pr <- merge(ypll_total_pr, pop_est_total_pr, by="ageRange") 
+ypll_pr <- ypll_total_pr %>% 
+           arrange(factor(ageRange, levels = ages)) %>%
+           mutate(ageRange = c("0 to 4","5 to 14","5 to 14","15 to 24","15 to 24","25 to 34",
+                               "25 to 34","35 to 44","35 to 44","45 to 54","45 to 54", "55 to 64",
+                               "55 to 64","65 to 74","65 to 74","75 to 84","75 to 84","85")) %>%
+           group_by(ageRange) %>%
+           summarize(ypll = sum(ypll)) %>%
+           mutate(st_pop = lapply(ageRange, st_pop_function2),
+                  pop_est = lapply(ageRange, pop_est_pr),
+                  population = rep("PR",times=10)) %>%
+           arrange(factor(ageRange, levels = ages3))
+           
+ypll_pr2 <- ypll_pr %>% select(-ageRange)
 
-#(add after changing ageRanges)
-#%>% mutate(st_pop = lapply(ageRange, st_pop_function2))
+#merging PR and US Hispanics
+mergedPR_US<- bind_rows(ypll_pr2,ypll_us2)
+
+#adding ageRange again
+ageRange <- as.matrix(rep(ages3,times=2))
+
+mergedPR_US1 <- mergedPR_US %>% mutate(ageRange)
+
+# make age ranges repeat by population
+mergedPR_US2<- mergedPR_US1 %>% arrange(factor(ageRange, levels = ages3),population)
+
+#convert to matrix
+obs <- matrix(mergedPR_US2$ypll, nrow=2, ncol=10,dimnames = list(c("PR","US"),ages3))
+
+tar <- matrix(unlist(mergedPR_US2$pop_est), nrow=2, ncol=10, dimnames = list(c("PR","US"),ages3))
+
+#picking one population since st_pop is the same for all
+mergedPR_US_std <- mergedPR_US2 %>% filter(population=="PR")
+std <- matrix(mergedPR_US_std$st_pop, nrow=1,dimnames = list(c("population"),ages3))
+
+std2<-as.matrix(unlist(std))
+rownames(std2) <- ages3
+colnames(std2) <- "population"
+
+# Age-adjusted YPLL of PR vs Hispanics in the US
+adjusted_ypll <- epi.directadj(obs, tar, std2)
 
