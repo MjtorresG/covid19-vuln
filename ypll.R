@@ -486,14 +486,3 @@ adjusted_ypll1 <- as.data.frame(adjusted_ypll) %>% select(crude.strata,crude.cov
 
 adjusted_ypll2 <- adjusted_ypll1 %>% select(adj.strata.strata, adj.strata.est, adj.strata.lower, adj.strata.upper) %>%
   slice(1:2)
-
-#options(gtsummary.tbl_summary.percent_fun = function(x) style_number(x * 100, digits = 1))
-
-#table1<- adjusted_ypll2 %>%
-#tbl_summary(by="adj.strata.strata",    missing_text = "(Missing)") %>%
-#add_overall() %>%
-#add_p() %>%
-#modify_spanning_header(c("stat_1", "stat_2") ~ "**YPLL**") %>%
-#modify_footnote(
-# starts_with("stat_") ~ "Median (IQR) or Frequency (%)"
-#)
