@@ -6,6 +6,8 @@ library("scales")
 library("epiR")
 library("gtsummary")
 library("openxlsx")
+library("xlsx")
+library("readxl")
 
 #as of Feb 26, 2022:
 #json_file <- "https://bioportal.salud.pr.gov/api/administration/reports/deaths/summary"
@@ -17,7 +19,7 @@ library("openxlsx")
 
 #write.xlsx(deaths, file = "yplldeaths.xlsx")
 
-deaths <- read_excel("yplldeaths.xlsx")
+deaths <- read.xlsx("yplldeaths.xlsx",sheetName = "Sheet 1")
 
 # U.S. 2000 standard population
 ages <-c("0 to 4", "5 to 9", "10 to 14", "15 to 19", "20 to 24", "25 to 29", 
@@ -299,8 +301,7 @@ ggplot(ponce_ypll, aes(x=date, y=cumsum(ypll))) + geom_line() +
   ggtitle("Cumulative YPLL \n Ponce Region")
 
 #-------------------------------                    ------------------------------
-#YPLL for Hispanics (deaths data is only for Hispanics)
-
+#YPLL for Hispanics
 #as of Feb 26, 2022
 #json_fileUS <-"https://data.cdc.gov/resource/ks3g-spdg.json"
 
