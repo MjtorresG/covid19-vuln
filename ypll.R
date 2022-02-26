@@ -4,19 +4,20 @@ library("tidyverse")
 library("lubridate")
 library("scales")
 library("epiR")
-library("gtsummary")     
+library("gtsummary")
+library("openxlsx")
 
-json_file <- "https://bioportal.salud.pr.gov/api/administration/reports/deaths/summary"
+#as of Feb 26, 2022:
+#json_file <- "https://bioportal.salud.pr.gov/api/administration/reports/deaths/summary"
 
-first_day <- make_date(2020, 3, 12)
+#deaths <- jsonlite::fromJSON(json_file) %>%
+  #mutate(age_start = as.numeric(str_extract(ageRange, "^\\d+")),
+         #age_end = as.numeric(str_extract(ageRange, "\\d+$")))
 
-deaths <- jsonlite::fromJSON(json_file) %>%
-  mutate(age_start = as.numeric(str_extract(ageRange, "^\\d+")),
-         age_end = as.numeric(str_extract(ageRange, "\\d+$"))) %>%
-  mutate(date = as_date(ymd_hms(deathDate, tz = "America/Puerto_Rico"))) %>%
-  mutate(date = if_else(date < first_day | date > today(),
-                        as_date(ymd_hms(reportDate, tz = "America/Puerto_Rico")),
-                        date))
+
+#write.xlsx(deaths, file = "yplldeaths.xlsx")
+
+deaths <- read_excel("yplldeaths.xlsx")
 
 # U.S. 2000 standard population
 ages <-c("0 to 4", "5 to 9", "10 to 14", "15 to 19", "20 to 24", "25 to 29", 
@@ -298,9 +299,21 @@ ggplot(ponce_ypll, aes(x=date, y=cumsum(ypll))) + geom_line() +
   ggtitle("Cumulative YPLL \n Ponce Region")
 
 #-------------------------------                    ------------------------------
-#YPLL for Hispanics
+#YPLL for Hispanics (deaths data is only for Hispanics)
 
-json_fileUS <-"https://data.cdc.gov/resource/ks3g-spdg.json"
+#as of Feb 26, 2022
+#json_fileUS <-"https://data.cdc.gov/resource/ks3g-spdg.json"
+
+#deathsUS <- jsonlite::fromJSON(json_fileUS) %>% 
+  #filter(state == "United States",race_and_hispanic_origin == "Hispanic") %>% 
+  #filter(age_group_new !="All Ages",age_group_new !="0-17 years",
+         #age_group_new !="18-29 years",age_group_new !="30-49 years",age_group_new !="50-64 years") %>%
+  #mutate(ageRange = lapply(age_group_new, agegrp_function2)) %>% 
+  #select(ageRange, covid_19_deaths) %>% 
+  #mutate(covid_19_deaths=sapply(covid_19_deaths, function(x) as.numeric(as.character(x))))
+
+#write.xlsx(deathsUS, file = "yplldeathsUS.xlsx")
+deathsUS <- read_excel("yplldeathsUS.xlsx")
 
 agegrp_function2 <- function(x) {
   if (x == "Under 1 year") {
@@ -328,14 +341,6 @@ agegrp_function2 <- function(x) {
   }
   return(result)
 }
-
-deathsUS <- jsonlite::fromJSON(json_fileUS) %>% 
-  filter(state == "United States",race_and_hispanic_origin == "Hispanic") %>% 
-  filter(age_group_new !="All Ages",age_group_new !="0-17 years",
-         age_group_new !="18-29 years",age_group_new !="30-49 years",age_group_new !="50-64 years") %>%
-  mutate(ageRange = lapply(age_group_new, agegrp_function2)) %>% 
-  select(ageRange, covid_19_deaths) %>% 
-  mutate(covid_19_deaths=sapply(covid_19_deaths, function(x) as.numeric(as.character(x))))
 
 #adding 0 to 4 age range
 to_4 <- deathsUS %>% filter(ageRange=="0" | ageRange=="1 to 4")
