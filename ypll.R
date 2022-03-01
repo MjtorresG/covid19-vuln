@@ -349,7 +349,7 @@ to_4 <- deathsUS %>% filter(ageRange=="0" | ageRange=="1 to 4")
 zero_to_4 <- data.frame("0 to 4", with(to_4,sum(covid_19_deaths)))
 names(zero_to_4) <- names(deathsUS)
 
-ages3<-c("0 to 4","5 to 14","15 to 24","25 to 34","35 to 44","45 to 54","55 to 64","65 to 74","75 to 84","85")
+ages3<-c("0 to 4","5 to 14","15 to 24","25 to 34","35 to 44","45 to 54","55 to 64","65 to 74")
 
 ypll_us <- deathsUS %>% rbind(zero_to_4) 
 
@@ -416,7 +416,7 @@ ypll_us2<- ypll_us %>% filter(ageRange!="0",ageRange!="1 to 4") %>%
   mutate(st_pop = lapply(ageRange, st_pop_function2),
          pop_est = lapply(ageRange, pop_est_hispanics),
          population = rep("US",times=10)) %>%
-  select(-ageRange)
+  select(-ageRange) %>% filter(ypll!=0)
 
 #adding total PR YPLL and adjusting ageRanges
 pop_est_pr <- function(x) {
@@ -458,7 +458,7 @@ ypll_pr <- ypll_total_pr %>%
                   population = rep("PR",times=10)) %>%
            arrange(factor(ageRange, levels = ages3))
            
-ypll_pr2 <- ypll_pr %>% select(-ageRange)
+ypll_pr2 <- ypll_pr %>% select(-ageRange) %>% filter(ypll!=0)
 
 #merging PR and US Hispanics
 mergedPR_US<- bind_rows(ypll_pr2,ypll_us2)
@@ -472,9 +472,9 @@ mergedPR_US1 <- mergedPR_US %>% mutate(ageRange)
 mergedPR_US2<- mergedPR_US1 %>% arrange(factor(ageRange, levels = ages3),population)
 
 #convert to matrix
-obs <- matrix(mergedPR_US2$ypll, nrow=2, ncol=10,dimnames = list(c("PR","US"),ages3))
+obs <- matrix(mergedPR_US2$ypll, nrow=2, ncol=8,dimnames = list(c("PR","US"),ages3))
 
-tar <- matrix(unlist(mergedPR_US2$pop_est), nrow=2, ncol=10, dimnames = list(c("PR","US"),ages3))
+tar <- matrix(unlist(mergedPR_US2$pop_est), nrow=2, ncol=8, dimnames = list(c("PR","US"),ages3))
 
 #picking one population since st_pop is the same for all
 mergedPR_US_std <- mergedPR_US2 %>% filter(population=="PR")
@@ -492,3 +492,4 @@ adjusted_ypll1 <- as.data.frame(adjusted_ypll) %>% select(crude.strata,crude.cov
 
 adjusted_ypll2 <- adjusted_ypll1 %>% select(adj.strata.strata, adj.strata.est, adj.strata.lower, adj.strata.upper) %>%
   slice(1:2)
+
