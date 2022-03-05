@@ -6,7 +6,6 @@ library("scales")
 library("epiR")
 library("gtsummary")
 library("openxlsx")
-library("xlsx")
 library("readxl")
 
 #as of Feb 26, 2022:
@@ -19,8 +18,7 @@ library("readxl")
 
 #write.xlsx(deaths, file = "yplldeaths.xlsx")
 
-deaths <- read.xlsx("yplldeaths.xlsx",sheetName = "Sheet 1")
-
+deaths <- read.xlsx("yplldeaths.xlsx")
 # U.S. 2000 standard population
 ages <-c("0 to 4", "5 to 9", "10 to 14", "15 to 19", "20 to 24", "25 to 29", 
          "30 to 34", "35 to 39", "40 to 44", "45 to 49", "50 to 54", "55 to 59", 
