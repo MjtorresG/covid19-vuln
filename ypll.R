@@ -11,10 +11,9 @@ library("readxl")
 #as of Feb 26, 2022:
 #json_file <- "https://bioportal.salud.pr.gov/api/administration/reports/deaths/summary"
 
-#deaths <- jsonlite::fromJSON(json_file) %>%
+#jsonlite::fromJSON(json_file) %>%
   #mutate(age_start = as.numeric(str_extract(ageRange, "^\\d+")),
          #age_end = as.numeric(str_extract(ageRange, "\\d+$")))
-
 
 #write.xlsx(deaths, file = "yplldeaths.xlsx")
 
@@ -301,7 +300,7 @@ ggplot(ponce_ypll, aes(x=date, y=cumsum(ypll))) + geom_line() +
 #-------------------------------                    ------------------------------
 #YPLL for Hispanics
 #as of Feb 26, 2022
-#json_fileUS <-"https://data.cdc.gov/resource/ks3g-spdg.json"
+#json_fileUS <-"https://data.cdc.gov/resource/ks3g-spdg.json" 
 
 #deathsUS <- jsonlite::fromJSON(json_fileUS) %>% 
   #filter(state == "United States",race_and_hispanic_origin == "Hispanic") %>% 
@@ -483,11 +482,12 @@ rownames(std2) <- ages3
 colnames(std2) <- "population"
 
 # Age-adjusted YPLL of PR vs Hispanics in the US
-adjusted_ypll <- epi.directadj(obs, tar, std2)
+adjusted_ypll <- epi.directadj(obs, tar, std2,units=100000)
 
 #Comparing
 adjusted_ypll1 <- as.data.frame(adjusted_ypll) %>% select(crude.strata,crude.cov,crude.est,adj.strata.strata, adj.strata.est, adj.strata.lower, adj.strata.upper)
 
 adjusted_ypll2 <- adjusted_ypll1 %>% select(adj.strata.strata, adj.strata.est, adj.strata.lower, adj.strata.upper) %>%
   slice(1:2)
+
 
