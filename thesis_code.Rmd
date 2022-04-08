@@ -1,0 +1,802 @@
+---
+title: "DOH_indicators"
+author: "Mary Torres"
+date: "4/3/2022"
+output: html_document
+---
+
+```{r indicators, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+
+#PR DOH DATA
+library("tidyverse")
+library("epiR")
+
+deathspr <- read_csv("data/pr_deaths.csv") %>% filter(CO_CLASIFICACION=="CONFIRMADO") %>% select(-c(ID_MUERTE,CO_SEXO,CO_CLASIFICACION,FE_MUERTE)) 
+
+casespr <- read_csv("data/pr_cases.csv") %>% filter(Class=="CONFIRMADO") %>%
+  select(-c(`Sample Date`,Class,`ID number`,Sex,City))
+
+#aggregating cases age-groups
+#0 to 39
+casesyounger <- casespr %>% filter(Age<40) 
+
+to_39 <- casesyounger %>% 
+  group_by(Region) %>% 
+  summarize(cases = sum(n())) %>%
+  mutate(Age = rep("0 to 39",times=9))
+
+#80+
+casesolder <- casespr %>% filter(Age>=80) 
+
+eightyplus <- casesolder %>% 
+  group_by(Region) %>% 
+  summarize(cases = sum(n())) %>%
+  mutate(Age = rep("80 +",times=9))
+
+#40 to 49
+cases40to49 <- casespr %>% filter(Age>=40,Age<=49) 
+
+cases4049 <- cases40to49 %>% 
+  group_by(Region) %>% 
+  summarize(cases = sum(n())) %>%
+  mutate(Age = rep("40 to 49",times=9))
+
+#50 to 59
+cases50to59 <- casespr %>% filter(Age>=50,Age<=59) 
+
+cases5059 <- cases50to59 %>% 
+  group_by(Region) %>% 
+  summarize(cases = sum(n())) %>%
+  mutate(Age = rep("50 to 59",times=9))
+
+#60 to 69
+cases60to69 <- casespr %>% filter(Age>=60,Age<=69) 
+
+cases6069 <- cases60to69 %>% 
+  group_by(Region) %>% 
+  summarize(cases = sum(n())) %>%
+  mutate(Age = rep("60 to 69",times=9))
+
+#70 to 79
+cases70to79 <- casespr %>% filter(Age>=70,Age<=79) 
+
+cases7079 <- cases70to79 %>% 
+  group_by(Region) %>% 
+  summarize(cases = sum(n())) %>%
+  mutate(Age = rep("70 to 79",times=9))
+
+regions <- c("ARECIBO","BAYAMON","CAGUAS","FAJARDO","MAYAGUEZ","METROPOLITANO","PONCE")
+cases <- rbind(to_39,cases4049,cases5059,cases6069,cases7079,eightyplus) %>% filter(Region!="N/A") %>% filter(Region!="FUERA_DE_PR") %>% arrange(factor(Region, levels = regions))
+
+#aggregating deaths age-groups
+
+#0 to 39
+deathsover39 <- deathspr %>% mutate(Age = as.numeric(str_extract(TX_GRUPO_EDAD, "^\\d+"))) %>%
+  filter(Age>30)
+
+deathsunder39 <- deathspr %>% mutate(Age = as.numeric(str_extract(TX_GRUPO_EDAD, "^\\d+"))) %>%
+  filter(Age<=30)
+
+deaths39 <- deathsunder39 %>% 
+  group_by(CO_REGION) %>% 
+  summarize(deaths = sum(n())) %>%
+  mutate(TX_GRUPO_EDAD = rep("0 to 39",times=7))
+
+deathsolder <- deathsover39 %>% select(-Age) %>% group_by(CO_REGION,TX_GRUPO_EDAD) %>% summarize(deaths = sum(n()))
+
+ages2 <- c("0 to 39","40 to 49","50 to 59","60 to 69","70 to 79","8")
+
+ages_fun <- function(x) {
+  if (x == "0 to 39") {
+    result <- "0 to 39"
+  } else if (x == "40 a 49") {
+    result <- "40 to 49"
+  } else if (x == "50 a 59") {
+    result <- "50 to 59"
+  } else if (x == "60 a 69") {
+    result <- "60 to 69"
+  } else if (x == "70 a 79") {
+    result <- "70 to 79"
+  } else if (x == "80 +") {
+    result <- "80 +"
+  } else {
+    result <- 0
+  }
+  return(result)
+}
+
+deaths <- deathsolder %>% rbind(deaths39) %>% filter(CO_REGION!="N/A") %>% arrange(factor(TX_GRUPO_EDAD, levels = ages2)) %>% arrange(factor(CO_REGION, levels = regions)) %>% rename(Region=CO_REGION) %>% rename(Age = TX_GRUPO_EDAD) %>%       
+    mutate(Age=lapply(Age,ages_fun))
+
+
+```
+
+
+```{r vulnerability & indicators}
+library("lubridate")
+library("scales")
+library("openxlsx")
+library("readxl")
+library("ggpubr")
+
+#weighted mean vulnerability by region
+
+pop_estimates <- read_csv("data/PRM-EST2020-AGESEX.csv")
+
+pop_est_muni <- pop_estimates %>% filter(YEAR == 14) %>% select(MUNICIPIO, NAME, POPESTIMATE)
+
+pop_est_region <- pop_estimates %>% select(YEAR, MUNICIPIO, NAME, AGE04_TOT, AGE59_TOT, AGE1014_TOT, AGE1519_TOT, AGE2024_TOT, 
+                                           AGE2529_TOT, AGE3034_TOT, AGE3539_TOT, AGE4044_TOT, AGE4549_TOT, AGE5054_TOT,
+                                           AGE5559_TOT, AGE6064_TOT, AGE6569_TOT, AGE7074_TOT, AGE7579_TOT, AGE8084_TOT,
+                                           AGE85PLUS_TOT) %>% filter(YEAR == 14) %>% mutate(Region = case_when(MUNICIPIO %in% c("013","017","027","039",
+                                           "054","065","081","091","101","115","141","145")~"Arecibo",
+                                           MUNICIPIO %in% c("019","021","033","047","051","105","107","135","137","143","045")~"Bayamon",
+                                           MUNICIPIO %in% c("029","031","061","087","127","139")~"Metro",
+                                           MUNICIPIO %in% c("007","009","025","035","041","063","069","077","085","095","103","129","151")~"Caguas",
+                                           MUNICIPIO %in% c("037","049","053","089","119","147")~"Fajardo",
+                                           MUNICIPIO %in% c("003","005","011","023","067","071","079","083","093","097","099","117","121","125","131")~"Mayaguez",
+                                           MUNICIPIO %in% c("001","015","055","057","059","073","075","043","109","111","113","123","133","149","153")~"Ponce"))
+
+agegrp_function <- function(x) {
+  if (x == "AGE04_TOT") {
+    result <- "0 to 4"
+  } else if (x == "AGE59_TOT") {
+    result <- "5 to 9"
+  } else if (x == "AGE1014_TOT") {
+    result <- "10 to 14"
+  } else if (x == "AGE1519_TOT") {
+    result <- "15 to 19"
+  } else if (x == "AGE2024_TOT") {
+    result <- "20 to 24"
+  } else if (x == "AGE2529_TOT") {
+    result <- "25 to 29"
+  } else if (x == "AGE3034_TOT") {
+    result <- "30 to 34"
+  } else if (x == "AGE3539_TOT") {
+    result <- "35 to 39"
+  } else if (x == "AGE4044_TOT") {
+    result <- "40 to 44"
+  } else if (x == "AGE4549_TOT") {
+    result <- "45 to 49"
+  } else if (x == "AGE5054_TOT") {
+    result <- "50 to 54"
+  } else if (x == "AGE5559_TOT") {
+    result <- "55 to 59"
+  } else if (x == "AGE6064_TOT") {
+    result <- "60 to 64"
+  } else if (x == "AGE6569_TOT") {
+    result <- "65 to 69"
+  } else if (x == "AGE7074_TOT") {
+    result <- "70 to 74"
+  } else if (x == "AGE7579_TOT") {
+    result <- "75 to 79"
+  } else if (x == "AGE8084_TOT") {
+    result <- "80 to 84"
+  } else {
+    result <- "85 to 89"
+  }
+  return(result)
+}
+
+pop_est_region2 <- pop_est_region %>% select(-c(NAME, YEAR, MUNICIPIO)) %>% 
+  pivot_longer(-Region, names_to = "age_group", values_to = "pop_est") %>% 
+  mutate(ageRange = lapply(age_group, agegrp_function)) %>% 
+  group_by(Region,.add = T) %>%
+  rename(region = Region) %>% summarize(pop_est = sum(pop_est), .groups = "keep") 
+
+pop_est_muni2 <- pop_est_muni %>% mutate(Region = case_when(MUNICIPIO %in% c("013","017","027","039",
+                                                                             "054","065","081","091","101","115","141","145")~"Arecibo",
+                                                            MUNICIPIO %in% c("019","021","033","047","051","105","107","135","137","143","045")~"Bayamon",
+                                                            MUNICIPIO %in% c("029","031","061","087","127","139")~"Metro",
+                                                            MUNICIPIO %in% c("007","009","025","035","041","063","069","077","085","095","103","129","151")~"Caguas",
+                                                            MUNICIPIO %in% c("037","049","053","089","119","147")~"Fajardo",
+                                                            MUNICIPIO %in% c("003","005","011","023","067","071","079","083","093","097","099","117","121","125","131")~"Mayaguez",
+                                                            MUNICIPIO %in% c("001","015","055","057","059","073","075","043","109","111","113","123","133","149","153")~"Ponce"))
+
+pop_est_Pon <- pop_est_muni2 %>% filter(Region=="Ponce") %>% 
+  mutate(region_pop = rep(468023,times=15)) %>%
+  mutate(pop_wt = POPESTIMATE/region_pop) 
+
+pop_est_May <- pop_est_muni2 %>% filter(Region=="Mayaguez") %>% 
+  mutate(region_pop = rep(454407,times=15)) %>%
+  mutate(pop_wt = POPESTIMATE/region_pop) 
+
+pop_est_Bay <- pop_est_muni2 %>% filter(Region=="Bayamon") %>% 
+  mutate(region_pop = rep(531924,times=11)) %>%
+  mutate(pop_wt = POPESTIMATE/region_pop) 
+
+pop_est_Met <- pop_est_muni2 %>% filter(Region=="Metro") %>% 
+  mutate(region_pop = rep(672518,times=6)) %>%
+  mutate(pop_wt = POPESTIMATE/region_pop) 
+
+pop_est_Cag <- pop_est_muni2 %>% filter(Region=="Caguas") %>% 
+  mutate(region_pop = rep(526559,times=13)) %>%
+  mutate(pop_wt = POPESTIMATE/region_pop) 
+
+pop_est_Faj <- pop_est_muni2 %>% filter(Region=="Fajardo") %>% 
+  mutate(region_pop = rep(114866,times=6)) %>%
+  mutate(pop_wt = POPESTIMATE/region_pop) 
+
+pop_est_Are <- pop_est_muni2 %>% filter(Region=="Arecibo") %>% 
+  mutate(region_pop = rep(391046,times=12)) %>%
+  mutate(pop_wt = POPESTIMATE/region_pop) 
+
+pop_wts <- bind_rows(pop_est_Are, pop_est_Bay, pop_est_Cag, pop_est_Faj, pop_est_Met, pop_est_May,pop_est_Pon) %>% 
+  group_by(NAME,.add = T) %>%
+  arrange(NAME) %>% select(-c(POPESTIMATE, region_pop))
+
+vuln <- read_csv("data/SVI de tormos et al.csv") %>% select(GEOID, MunicipalArea, overall, SOCECO) %>%
+  group_by(MunicipalArea,.add = T) %>% 
+  filter(SOCECO>0, overall>0) %>%
+  summarize(mean_overall = mean(overall), mean_socio = mean(SOCECO),.groups = "keep")
+
+#eliminating towns with special characters, then reintroducing them because the original file gave errors due to special characters
+vuln<-vuln[-c(8, 11, 15, 17, 23, 33, 39, 43, 45, 47, 50, 57, 60, 61, 64, 67),]
+
+add1<- data.frame("Anasco",0.6886258,0.5836917)
+names(add1) <- names(vuln)
+
+add2<- data.frame("Bayamon",0.4143083,0.2868522)
+names(add2) <- names(vuln)
+
+add3<- data.frame("Canovanas",0.4454382,0.3258405)
+names(add3) <- names(vuln)
+
+add4<- data.frame("Catano",0.4400039,0.6763953)
+names(add4) <- names(vuln)
+
+add5<- data.frame("Comerio",0.6785437,0.8129088)
+names(add5) <- names(vuln)
+
+add6<- data.frame("Guanica",0.2734629,0.7454130)
+names(add6) <- names(vuln)
+
+add7<- data.frame("Juana Diaz",0.7645077,0.5473292)
+names(add7) <- names(vuln)
+
+add8<- data.frame("Las Marias",0.4456800,0.6769355)
+names(add8) <- names(vuln)
+
+add9<- data.frame("Loiza",0.5121517,0.5154944)
+names(add9) <- names(vuln)
+
+add10<- data.frame("Manati",0.7047089,0.4891578)
+names(add10) <- names(vuln)
+
+add11<- data.frame("Mayaguez",0.5204107,0.5058994)
+names(add11) <- names(vuln)
+
+add12<- data.frame("Penuelas",0.1019425,0.4413851)
+names(add12) <- names(vuln)
+
+add13<- data.frame("Rincon",0.8266456,0.5757431)
+names(add13) <- names(vuln)
+
+add14<- data.frame("Rio Grande",0.6252093,0.4758292)
+names(add14) <- names(vuln)
+
+add15<- data.frame("San German",0.6196502,0.5601976)
+names(add15) <- names(vuln)
+
+add16<- data.frame("San Sebastian",0.7806206,0.8416909)
+names(add16) <- names(vuln)
+
+#sum weighted vulnerability indexes by region
+vuln2 <-vuln %>% rbind(add1,add2,add3,add4,add5,add6,add7,add8,add9,add10,add11,add12,add13,add14,add15,add16) %>% 
+  arrange(MunicipalArea)
+
+socioeco_vuln <- vuln2 %>% select(-mean_overall)
+overall_vuln <- vuln2 %>% select(-mean_socio)
+
+socioeco_vuln2<- bind_cols(socioeco_vuln, pop_wts) %>% mutate(weighted_vuln = mean_socio*pop_wt) %>% 
+  group_by(Region) %>% select(-MunicipalArea,MUNICIPIO,NAME) %>% summarize(mean_socioecovuln = sum(weighted_vuln),.groups = "keep")
+
+overall_vuln2 <- bind_cols(overall_vuln, pop_wts) %>% mutate(weighted_vuln = mean_overall*pop_wt) %>%
+  group_by(Region) %>% select(-MunicipalArea,MUNICIPIO,NAME) %>% summarize(mean_socialvuln = sum(weighted_vuln),.groups = "keep")
+
+st_pop_function <- function(x) {
+  if (x == "0 to 39") {
+    result <- 156454
+  } else if (x == "40 to 49") {
+    result <- 42285
+  } else if (x == "50 to 59") {
+    result <- 30531
+  } else if (x == "60 to 69") {
+    result <- 20064
+  } else if (x == "70 to 79") {
+    result <- 16141
+  } else if (x == "80 +") {
+    result <- 9159
+  } else {
+    result <- 0
+  }
+  return(result)
+}
+
+# PR population estimates for age-specific indicators
+pop_estimates_byageRange_region <- read_excel("data/pop_est_doh_data.xlsx")
+
+#merging observations
+cases_deaths <- merge(cases, deaths, by=c("Region","Age"))
+
+cases_deaths_pop <- merge(cases_deaths, pop_estimates_byageRange_region, by=c("Region","Age"))
+
+ages3 <- c("0 to 39","40 to 49","50 to 59","60 to 69","70 to 79","80 +")
+#incidence
+#___________________________
+inci <- cases_deaths_pop %>% select(-deaths) %>%
+  mutate(st_pop = lapply(Age, st_pop_function))
+
+obs <- matrix(inci$cases, nrow=7, ncol=6,dimnames = list(c("Arecibo","Bayamon","Caguas", "Fajardo","Mayaguez","Metro","Ponce"),ages3),byrow=T)
+
+tar <- matrix(inci$pop_est, nrow=7, ncol=6, dimnames = list(c("Arecibo","Bayamon","Caguas", "Fajardo","Mayaguez","Metro","Ponce"),ages3),byrow=T)
+
+#picking one population since st_pop is the same for all
+stpop_inci<- inci %>% filter(Region=="ARECIBO")
+std <- matrix(stpop_inci$st_pop, nrow=1,dimnames = list(c("population"),ages3))
+
+std2<-as.matrix(unlist(std))
+rownames(std2) <- ages3
+colnames(std2) <- "population"
+
+# Age-adjusted incidence
+adjusted_inci <- epi.directadj(obs, tar, std2, units=100000)
+
+#mortality
+mort <- cases_deaths_pop %>% select(-cases) %>%
+  mutate(st_pop = lapply(Age, st_pop_function))
+
+obs <- matrix(mort$deaths, nrow=7, ncol=6,dimnames = list(c("Arecibo","Bayamon","Caguas", "Fajardo","Mayaguez","Metro","Ponce"),ages3),byrow=T)
+
+tar <- matrix(mort$pop_est, nrow=7, ncol=6, dimnames = list(c("Arecibo","Bayamon","Caguas", "Fajardo","Mayaguez","Metro","Ponce"),ages3),byrow=T)
+
+#picking one population since st_pop is the same for all
+stpop_mort<- mort %>% filter(Region=="ARECIBO")
+std <- matrix(stpop_mort$st_pop, nrow=1,dimnames = list(c("population"),ages3))
+
+std2<-as.matrix(unlist(std))
+rownames(std2) <- ages3
+colnames(std2) <- "population"
+
+# Age-adjusted mortality
+adjusted_mort <- epi.directadj(obs, tar, std2, units=100000)
+
+#case-fatality rate
+#adding the standard age distribution of cases
+cases_dist<- read.xlsx("data/age_dist_casesUS2.xlsx")
+
+cfr <- cases_deaths_pop %>% mutate(st_pop = lapply(Age, st_pop_function))
+
+obs <- matrix(cfr$deaths, nrow=7, ncol=6,dimnames = list(c("Arecibo","Bayamon","Caguas", "Fajardo","Mayaguez","Metro","Ponce"),ages3),byrow=T)
+
+tar <- matrix(cfr$cases, nrow=7, ncol=6, dimnames = list(c("Arecibo","Bayamon","Caguas", "Fajardo","Mayaguez","Metro","Ponce"),ages3),byrow=T)
+
+#getting standard cases
+std <- matrix(cases_dist$std_cases, nrow=1,dimnames = list(c("standard"),ages3))
+
+# Age-adjusted CFR
+adjusted_cfr <- epi.directadj(obs, tar, std, units=100000)
+
+
+```
+
+
+
+```{r correlations}
+
+#relating vulnerability and indicators
+#mortality
+adjusted_mort2 <- as.data.frame(adjusted_mort) %>% select(crude.strata,crude.cov,crude.est,adj.strata.strata, adj.strata.est, adj.strata.lower, adj.strata.upper)
+
+adjusted_mort3 <- adjusted_mort2 %>% select(adj.strata.strata, adj.strata.est, adj.strata.lower, adj.strata.upper) %>%
+  slice(1:7)
+
+cor.test(overall_vuln2$mean_socialvuln, adjusted_mort3$adj.strata.est, method = "spearman")
+
+cor.test(socioeco_vuln2$mean_socioecovuln, adjusted_mort3$adj.strata.est, method = "spearman")
+
+#incidence
+adjusted_inci2 <- as.data.frame(adjusted_inci) %>% select(crude.strata,crude.cov,crude.est,adj.strata.strata, adj.strata.est, adj.strata.lower, adj.strata.upper)
+
+adjusted_inci3 <- adjusted_inci2 %>% select(adj.strata.strata, adj.strata.est, adj.strata.lower, adj.strata.upper) %>%
+  slice(1:7)
+
+cor.test(overall_vuln2$mean_socialvuln, adjusted_inci3$adj.strata.est, method = "spearman")
+
+cor.test(socioeco_vuln2$mean_socioecovuln, adjusted_inci3$adj.strata.est, method = "spearman")
+
+#cfr
+adjusted_cfr2 <- as.data.frame(adjusted_cfr) %>% select(crude.strata,crude.cov,crude.est,adj.strata.strata, adj.strata.est, adj.strata.lower, adj.strata.upper)
+
+adjusted_cfr3 <- adjusted_cfr2 %>% select(adj.strata.strata, adj.strata.est, adj.strata.lower, adj.strata.upper) %>%
+  slice(1:7)
+
+cor.test(overall_vuln2$mean_socialvuln, adjusted_cfr3$adj.strata.est, method = "spearman")
+
+cor.test(socioeco_vuln2$mean_socioecovuln, adjusted_cfr3$adj.strata.est, method = "spearman")
+
+#Plotting
+#Mortality
+df1 <- as.data.frame(matrix(c(overall_vuln2$mean_socialvuln,adjusted_mort3$adj.strata.est),
+    nrow=7,ncol=2,dimnames=list(c("Arecibo","Bayamon","Caguas","Fajardo","Mayaguez","Metro","Ponce"),c("socialvuln","mort"))))
+
+ggscatter(df1, "socialvuln", "mort",
+          add = "reg.line", conf.int = F,
+          xlab = "Overall Social Vulnerability", ylab = "Age-adjusted Mortality (per 100,000 population)",
+          shape = 21, fill = "black", color = "black", size = 2) + 
+  stat_cor(method = "spearman", label.x = 0.5, label.y = 5) +
+  coord_cartesian(ylim = c(0,61), xlim = c(.505,.71))
+
+
+df2 <- as.data.frame(matrix(c(socioeco_vuln2$mean_socioecovuln, adjusted_mort3$adj.strata.est),
+                            nrow=7,ncol=2,dimnames=list(c("Arecibo","Bayamon","Caguas","Fajardo","Mayaguez","Metro","Ponce"),c("socioeco","mort"))))
+
+ggscatter(df2, "socioeco", "mort",
+          add = "reg.line", conf.int = F,
+          xlab = "Socioeconomic Vulnerability", ylab = "Age-adjusted Mortality (per 100,000 population)",
+          shape = 21, fill = "black", color = "black", size = 2) + 
+  stat_cor(method = "spearman", label.x = 0.50, label.y = 60) +
+  coord_cartesian(ylim = c(0,63), xlim = c(.32,.63))
+
+#Incidence
+df3 <- as.data.frame(matrix(c(overall_vuln2$mean_socialvuln,adjusted_inci3$adj.strata.est),
+                            nrow=7,ncol=2,dimnames=list(c("Arecibo","Bayamon","Caguas","Fajardo","Mayaguez","Metro","Ponce"),c("socialvuln","inci"))))
+
+ggscatter(df3, "socialvuln", "inci",
+          add = "reg.line", conf.int = F,
+          xlab = "Overall Social Vulnerability", ylab = "Age-adjusted Incidence (per 100,000 population)",
+          shape = 21, fill = "black", color = "black", size = 2) + 
+  stat_cor(method = "spearman", label.x = 0.64, label.y = 60) +
+  coord_cartesian(ylim = c(0,5900), xlim = c(.51,.71))
+
+df4 <- as.data.frame(matrix(c(socioeco_vuln2$mean_socioecovuln, adjusted_inci3$adj.strata.est),
+                            nrow=7,ncol=2,dimnames=list(c("Arecibo","Bayamon","Caguas","Fajardo","Mayaguez","Metro","Ponce"),c("socioeco","inci"))))
+
+ggscatter(df4, "socioeco", "inci",
+          add = "reg.line", conf.int = F,
+          xlab = "Socioeconomic Vulnerability", ylab = "Age-adjusted Incidence (per 100,000 population)",
+          shape = 21, fill = "black", color = "black", size = 2) + 
+  stat_cor(method = "spearman", label.x = 0.5, label.y = 5850) +
+  coord_cartesian(ylim = c(0,6000), xlim = c(.32,.63))
+
+#CFR
+df5 <- as.data.frame(matrix(c(overall_vuln2$mean_socialvuln, adjusted_cfr3$adj.strata.est),
+                            nrow=7,ncol=2,dimnames=list(c("Arecibo","Bayamon","Caguas","Fajardo","Mayaguez","Metro","Ponce"),c("socialvuln","cfr"))))
+
+ggscatter(df5, "socialvuln", "cfr",
+          add = "reg.line", conf.int = F,
+          xlab = "Overall Social Vulnerability", ylab = "Age-adjusted Case-fatality Rate (per 100,000 population)",
+          shape = 21, fill = "black", color = "black", size = 2) + 
+  stat_cor(method = "spearman", label.x = 0.60, label.y = 4700) +
+  coord_cartesian(ylim = c(0,5000), xlim = c(.51,.71))
+
+df6 <- as.data.frame(matrix(c(socioeco_vuln2$mean_socioecovuln, adjusted_cfr3$adj.strata.est),
+                            nrow=7,ncol=2,dimnames=list(c("Arecibo","Bayamon","Caguas","Fajardo","Mayaguez","Metro","Ponce"),c("socioeco","cfr"))))
+
+ggscatter(df6, "socioeco", "cfr",
+          add = "reg.line", conf.int = F,
+          xlab = "Socioeconomic Vulnerability", ylab = "Age-adjusted Case-fatality Rate (per 100,000 population)",
+          shape = 21, fill = "black", color = "black", size = 2) + 
+  stat_cor(method = "spearman", label.x = 0.32, label.y = 5000) +
+  coord_cartesian(ylim = c(0,5300), xlim = c(.32,.63))
+
+
+```
+
+```{r Tables, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+
+ds <- read_csv("data/pr_deaths.csv") %>% select(-c(ID_MUERTE,FE_MUERTE)) 
+
+cs <- read_csv("data/pr_cases.csv") %>%
+  select(-c(`Sample Date`,`ID number`)) %>% filter(Region!="FUERA_DE_PR")
+
+options(gtsummary.tbl_summary.percent_fun = function(x) style_number(x * 100, digits = 1))
+
+table1<- ds %>%
+  tbl_summary(missing_text = "(Missing value)") 
+
+table1
+
+table2<- cs %>%
+  tbl_summary(missing_text = "(Missing value)") 
+
+table2
+
+casesallpr <- read_csv("data/pr_cases.csv") %>%
+  select(-c(`Sample Date`,Class,`ID number`,Sex,City)) %>% filter(Region!="FUERA_DE_PR") %>% group_by(Age) %>% summarize(c=n())
+
+zero_thirtynine<-casesallpr[1:40,] %>% summarize(c=sum(c))
+fourties<-casesallpr[41:50,] %>% summarize(c=sum(c))
+fifties<-casesallpr[51:60,] %>% summarize(c=sum(c))
+sixties<-casesallpr[61:70,] %>% summarize(c=sum(c))
+seventies<-casesallpr[71:80,] %>% summarize(c=sum(c))
+eightyplus<-casesallpr[81:105,] %>% summarize(c=sum(c))
+
+```
+
+```{r YPLL 2}
+#popy<-read_csv("data/NC-EST2020-ALLDATA-R-File22.csv") %>% filter(MONTH==7) %>%
+   #select(c(AGE, H_MALE, H_FEMALE)) %>% mutate(hispanics=H_MALE+H_FEMALE) %>% #select(-c(H_MALE,H_FEMALE)) %>% filter(AGE!=999,AGE<=80)
+#write.xlsx(popy,file=("data/pop_estUS.xlsx"))
+
+popUS <-read.xlsx("data/pop_estUS.xlsx")
+
+pop_est_hispanics <- function(x) {
+  if (x == "0 to 39") {
+    result <- 39695408
+  } else if (x == "40 to 49") {
+    result <- 8091692
+  } else if (x == "50 to 59") {
+    result <- 6314696
+  } else if (x == "60 to 69") {
+    result <- 4054330
+  } else if (x == "70 to 79") {
+    result <- 2073672
+  } else {
+    result <- 0
+  }
+  return(result)
+}
+# PR population estimates
+pop_estimates <- read_csv("data/PRM-EST2020-AGESEX.csv")
+
+pop_est_df <- pop_estimates %>% select(YEAR, MUNICIPIO, NAME, AGE04_TOT, AGE59_TOT, AGE1014_TOT, AGE1519_TOT, AGE2024_TOT, 
+                                       AGE2529_TOT, AGE3034_TOT, AGE3539_TOT, AGE4044_TOT, AGE4549_TOT, AGE5054_TOT,
+                                       AGE5559_TOT, AGE6064_TOT, AGE6569_TOT, AGE7074_TOT,AGE7579_TOT) %>% filter(YEAR == 14) %>% mutate(Region = case_when(MUNICIPIO %in% c("013","017","027","039",
+                                       "054","065","081","091","101","115","141","145")~"Arecibo",
+                                       MUNICIPIO %in% c("019","021","033","047","051","105","107","135","137","143","045")~"Bayamon",
+                                       MUNICIPIO %in% c("029","031","061","087","127","139")~"Metro",
+                                       MUNICIPIO %in% c("007","009","025","035","041","063","069","077","085","095","103","129","151")~"Caguas",
+                                       MUNICIPIO %in% c("037","049","053","089","119","147")~"Fajardo",
+                                       MUNICIPIO %in% c("003","005","011","023","067","071","079","083","093","097","099","117","121","125","131")~"Mayaguez",
+                                       MUNICIPIO %in% c("001","015","055","057","059","073","075","043","109","111","113","123","133","149","153")~"Ponce"))
+
+agegrp_function <- function(x) {
+  if (x == "AGE04_TOT") {
+    result <- "0 to 4"
+  } else if (x == "AGE59_TOT") {
+    result <- "5 to 9"
+  } else if (x == "AGE1014_TOT") {
+    result <- "10 to 14"
+  } else if (x == "AGE1519_TOT") {
+    result <- "15 to 19"
+  } else if (x == "AGE2024_TOT") {
+    result <- "20 to 24"
+  } else if (x == "AGE2529_TOT") {
+    result <- "25 to 29"
+  } else if (x == "AGE3034_TOT") {
+    result <- "30 to 34"
+  } else if (x == "AGE3539_TOT") {
+    result <- "35 to 39"
+  } else if (x == "AGE4044_TOT") {
+    result <- "40 to 44"
+  } else if (x == "AGE4549_TOT") {
+    result <- "45 to 49"
+  } else if (x == "AGE5054_TOT") {
+    result <- "50 to 54"
+  } else if (x == "AGE5559_TOT") {
+    result <- "55 to 59"
+  } else if (x == "AGE6064_TOT") {
+    result <- "60 to 64"
+  } else if (x == "AGE6569_TOT") {
+    result <- "65 to 69"
+  } else if (x == "AGE7074_TOT") {
+    result <- "70 to 74"
+  } else if (x == "AGE7579_TOT") {
+    result <- "75 to 79"
+  } else if (x == "AGE8084_TOT") {
+    result <- "80 to 84"
+  } else {
+    result <- "85 to 89"
+  }
+  return(result)
+}
+
+pop_est_by_region <- pop_est_df %>% select(-c(NAME, YEAR, MUNICIPIO)) %>% 
+  pivot_longer(-Region, names_to = "age_group", values_to = "pop_est") %>% 
+  mutate(ageRange = lapply(age_group, agegrp_function)) %>% 
+  group_by(Region, ageRange,.add = T) %>%
+  rename(region = Region) %>% summarize(pop_est = sum(pop_est), .groups = "keep")
+
+#adding total PR YPLL and adjusting ageRanges
+pop_est_by_age <- pop_est_by_region %>% ungroup() %>% group_by(ageRange) %>% summarize(pop_est=sum(pop_est))
+
+#pop_est_by_age[15:16,] %>% summarize(pop=sum(pop_est))
+
+pop_est_pr <- function(x) {
+  if (x == "0 to 39") {
+    result <- 1429099	
+  } else if (x == "40 to 49") {
+    result <- 397547	
+  } else if (x == "50 to 59") {
+    result <- 425740
+  } else if (x == "60 to 69") {
+    result <- 400718
+  } else if (x == "70 to 79") {
+    result <- 314859
+  } else {
+    result <- 0
+  }
+  return(result)
+}
+
+st_pop_function <- function(x) {
+  if (x == "0 to 39") {
+    result <- 156454
+  } else if (x == "40 to 49") {
+    result <- 42285
+  } else if (x == "50 to 59") {
+    result <- 30531
+  } else if (x == "60 to 69") {
+    result <- 20064
+  } else if (x == "70 to 79") {
+    result <- 16141
+  } else if (x == "80 +") {
+    result <- 9159
+  } else {
+    result <- 0
+  }
+  return(result)
+}
+
+#adding PR ypll
+deaths2 <- deaths %>% filter(Age!="80 +") %>% mutate(age_start = as.numeric(str_extract(Age, "^\\d+")), age_end = as.numeric(str_extract(Age, "\\d+$")))
+
+ypll <- deaths2 %>%
+  mutate(ypll = 80 - (1 + age_end + age_start)/2) %>%
+  mutate(ypll = if_else(ypll < 0, 0, ypll)) %>%
+  group_by(Age) %>%
+  summarize(ypll = sum(ypll), .groups = "drop") %>%
+  mutate(st_pop = lapply(Age, st_pop_function),
+         pop_est = lapply(Age, pop_est_pr),
+         population = rep("PR",times=5))
+
+#adding US ypll
+USdeaths<-read.xlsx("data/2hisp_deaths2020.xlsx") %>% filter(Age!="80 +") %>% mutate(age_start = as.numeric(str_extract(Age, "^\\d+")),age_end = as.numeric(str_extract(Age, "\\d+$")))
+
+ypll_us <- USdeaths %>% 
+  mutate(ypll = deaths*(80 - (1 + age_end + age_start)/2)) %>%
+  mutate(ypll = if_else(ypll < 0, 0, ypll)) %>%
+  group_by(Age) %>%
+  summarize(ypll = sum(ypll), .groups = "drop") %>%
+  mutate(st_pop = lapply(Age, st_pop_function),
+         pop_est = lapply(Age, pop_est_hispanics),
+         population = rep("US",times=5))
+
+#merging
+merged<- ypll %>% rbind(ypll_us)
+
+ages<-c("0 to 39","40 to 49","50 to 59","60 to 69","70 to 79")
+#convert to matrix
+obs <- matrix(merged$ypll, nrow=2,dimnames = list(c("PR","US"),ages),byrow=T)
+
+tar <- matrix(unlist(merged$pop_est), nrow=2, dimnames = list(c("PR","US"),ages),byrow=T)
+
+#picking one population since st_pop is the same for all
+merged_std <- merged %>% filter(population=="PR")
+std <- matrix(merged_std$st_pop, nrow=1,dimnames = list(c("population"),ages))
+
+std2<-as.matrix(unlist(std))
+rownames(std2) <- ages
+colnames(std2) <- "population"
+
+# Age-adjusted YPLL of PR vs Hispanics in the US
+adjusted_ypll <- epi.directadj(obs, tar, std2,units=100000)
+
+#Comparing
+adjusted_ypll1 <- as.data.frame(adjusted_ypll) %>% select(crude.strata,crude.cov,crude.est,adj.strata.strata, adj.strata.est, adj.strata.lower, adj.strata.upper)
+
+adjusted_ypll2 <- adjusted_ypll1 %>% select(adj.strata.strata, adj.strata.est, adj.strata.lower, adj.strata.upper) %>%
+  slice(1:2)
+
+```
+
+```{r Tables 2}
+#tables 6, 7, 8 and 9
+morttable <- adjusted_mort2 %>% select(-c(adj.strata.est, adj.strata.lower, 
+          adj.strata.upper, adj.strata.strata)) %>%
+          group_by(crude.cov) %>%
+  pivot_wider(names_from = "crude.strata", values_from = "crude.est")
+
+
+incitable <- adjusted_inci2 %>% select(-c(adj.strata.est, adj.strata.lower, 
+          adj.strata.upper, adj.strata.strata)) %>%
+          group_by(crude.cov) %>%
+  pivot_wider(names_from = "crude.strata", values_from = "crude.est")
+
+
+cfrtable <- adjusted_cfr2 %>% select(-c(adj.strata.est, adj.strata.lower, 
+          adj.strata.upper, adj.strata.strata)) %>%
+          group_by(crude.cov) %>%
+  pivot_wider(names_from = "crude.strata", values_from = "crude.est")
+
+
+yplltable <- adjusted_ypll1 %>% select(-c(adj.strata.est, adj.strata.lower, 
+          adj.strata.upper, adj.strata.strata)) %>%
+          group_by(crude.cov) %>%
+  pivot_wider(names_from = "crude.strata", values_from = "crude.est")
+
+morttable %>%
+  set_names(c("Age-group","Arecibo","Bayamon","Caguas","Fajardo","Mayaguez","Metro","Ponce")) %>%
+  kable(
+    booktabs = T,
+    escape = F,
+    linesep= "",
+    digits=1) %>%
+  kable_styling(latex_options = c("hold_position"),full_width = F) %>%
+  column_spec(c(1:8), color = "black")
+
+incitable %>%
+  set_names(c("Age-group","Arecibo","Bayamon","Caguas","Fajardo","Mayaguez","Metro","Ponce")) %>%
+  kable(
+    booktabs = T,
+    escape = F,
+    linesep= "",
+    digits=1) %>%
+  kable_styling(latex_options = c("hold_position"),full_width = F) %>%
+  column_spec(c(1:8), color = "black")
+
+cfrtable %>%
+  set_names(c("Age-group","Arecibo","Bayamon","Caguas","Fajardo","Mayaguez","Metro","Ponce")) %>%
+  kable(
+    booktabs = T,
+    escape = F,
+    linesep= "",
+    digits=1) %>%
+  kable_styling(latex_options = c("hold_position"),full_width = F) %>%
+  column_spec(c(1:8), color = "black")
+
+yplltable %>%
+  set_names(c("Age-group","Puerto Rico","United States (Hispanics only)")) %>%
+  kable(
+    booktabs = T,
+    escape = F,
+    linesep= "",
+    digits=1) %>%
+  kable_styling(latex_options = c("hold_position"),full_width = F) %>%
+  column_spec(c(1:3), color = "black")
+
+#tables 10, 11, 12 and 13
+data.frame(adjusted_mort$adj.strata) %>%
+  set_names(c("Region","Deaths","Population","Mortality Rate","Lower","Upper")) %>%
+  kable(
+    booktabs = T,
+    escape = F,
+    linesep= "",
+    digits=1) %>%
+  kable_styling(latex_options = c("hold_position"),full_width = F) %>%
+  column_spec(c(1:6), color = "black")
+
+data.frame(adjusted_inci$adj.strata) %>%
+  set_names(c("Region","Cases","Population","Incidence Rate","Lower","Upper")) %>%
+  kable(
+    booktabs = T,
+    escape = F,
+    linesep= "",
+    digits=1) %>%
+  kable_styling(latex_options = c("hold_position"),full_width = F) %>%
+  column_spec(c(1:6), color = "black")
+
+data.frame(adjusted_cfr$adj.strata) %>%
+  set_names(c("Region","Deaths","Cases","Case-fatality Rate","Lower","Upper")) %>%
+  kable(
+    booktabs = T,
+    escape = F,
+    linesep= "",
+    digits=1) %>%
+  kable_styling(latex_options = c("hold_position"),full_width = F) %>%
+  column_spec(c(1:6), color = "black")
+
+data.frame(adjusted_ypll$adj.strata) %>%
+  set_names(c("","Crude YPLL","Population","YPLL Rate","Lower","Upper")) %>%
+  kable(
+    booktabs = T,
+    escape = F,
+    linesep= "",
+    digits=1) %>%
+  kable_styling(latex_options = c("hold_position"),full_width = F) %>%
+  column_spec(c(1:6), color = "black")
+
+```

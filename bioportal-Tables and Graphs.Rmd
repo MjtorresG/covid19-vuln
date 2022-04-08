@@ -1,0 +1,187 @@
+---
+title: "Tables and Graphs"
+author: "Mary Torres"
+date: "3/13/2022"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+#(load the other bioportal scripts before this one)
+## YPLL
+```{r YPLL}
+knitr::opts_chunk$set(echo = F)
+
+require(gtsummary)     
+
+```
+
+## Vulnerability
+```{r Vulnerability}
+require(kableExtra)
+require(tidyverse)
+require(matrixStats)
+require(gtsummary)
+require(Hmisc)
+
+overall_vuln2%>%
+  set_names(c("Region","Overall Social Vulnerability"))%>%
+kable(
+    caption = "\\ Social vulnerability index (weighted by population)",
+    booktabs = T,
+    escape = F,
+    linesep= "") %>%
+  kable_styling(latex_options = c("hold_position"),full_width = F)%>%
+  footnote(general=paste("No data was available for some records: (## age, ##, sex, ## region)")) %>%
+  column_spec(c(1,2), color = "black")
+
+socioeco_vuln2%>%
+  set_names(c("Region","Socioeconomic Vulnerability"))%>%
+kable(
+    caption = "\\ Socioeconomic vulnerability index (weighted by population)",
+    booktabs = T,
+    escape = F,
+    linesep= "") %>%
+  kable_styling(latex_options = c("hold_position"),full_width = F)%>%
+  footnote(general=paste("No data was available for some records: (## age, ##, sex, ## region)")) %>%
+  column_spec(c(1,2), color = "black")
+
+```
+
+## Indicators
+```{r Indicators 1}
+
+require(gtsummary)  
+
+load("originaldeaths.rda")
+ds <- originaldeaths %>% filter(yr==2020) %>% select(-c(deathDate,reportDate,yr))
+
+options(gtsummary.tbl_summary.percent_fun = function(x) style_number(x * 100, digits = 1))
+
+table1<- ds %>%
+  tbl_summary(missing_text = "(Missing value)") 
+
+table1
+
+m<-cases_deaths_pop %>% select(-c(deaths,pop_est)) %>% 
+  group_by(ageRange) %>% 
+  summarize(c=sum(cases)) %>%
+  mutate(percent=(c/sum(c))*100)
+
+k<-cases_deaths_pop %>% select(-c(deaths,pop_est)) %>% 
+  group_by(region) %>% 
+  summarize(c=sum(cases)) %>%
+  mutate(percent=(c/sum(c))*100)
+
+```
+
+```{r Indicators 2}
+#tables 6, 7, 8 and 9
+morttable <- adjusted_mort2 %>% select(-c(adj.strata.est, adj.strata.lower, 
+          adj.strata.upper, adj.strata.strata)) %>%
+          group_by(crude.cov) %>%
+  pivot_wider(names_from = "crude.strata", values_from = "crude.est")
+
+
+incitable <- adjusted_inci2 %>% select(-c(adj.strata.est, adj.strata.lower, 
+          adj.strata.upper, adj.strata.strata)) %>%
+          group_by(crude.cov) %>%
+  pivot_wider(names_from = "crude.strata", values_from = "crude.est")
+
+
+cfrtable <- adjusted_cfr2 %>% select(-c(adj.strata.est, adj.strata.lower, 
+          adj.strata.upper, adj.strata.strata)) %>%
+          group_by(crude.cov) %>%
+  pivot_wider(names_from = "crude.strata", values_from = "crude.est")
+
+
+yplltable <- adjusted_ypll1 %>% select(-c(adj.strata.est, adj.strata.lower, 
+          adj.strata.upper, adj.strata.strata)) %>%
+          group_by(crude.cov) %>%
+  pivot_wider(names_from = "crude.strata", values_from = "crude.est")
+
+morttable %>%
+  set_names(c("Age-group","Arecibo","Bayamon","Caguas","Fajardo","Mayaguez","Metro","Ponce")) %>%
+  kable(
+    booktabs = T,
+    escape = F,
+    linesep= "",
+    digits=1) %>%
+  kable_styling(latex_options = c("hold_position"),full_width = F) %>%
+  column_spec(c(1:8), color = "black")
+
+incitable %>%
+  set_names(c("Age-group","Arecibo","Bayamon","Caguas","Fajardo","Mayaguez","Metro","Ponce")) %>%
+  kable(
+    booktabs = T,
+    escape = F,
+    linesep= "",
+    digits=1) %>%
+  kable_styling(latex_options = c("hold_position"),full_width = F) %>%
+  column_spec(c(1:8), color = "black")
+
+cfrtable %>%
+  set_names(c("Age-group","Arecibo","Bayamon","Caguas","Fajardo","Mayaguez","Metro","Ponce")) %>%
+  kable(
+    booktabs = T,
+    escape = F,
+    linesep= "",
+    digits=1) %>%
+  kable_styling(latex_options = c("hold_position"),full_width = F) %>%
+  column_spec(c(1:8), color = "black")
+
+yplltable %>%
+  set_names(c("Age-group","Puerto Rico","United States (Hispanics only)")) %>%
+  kable(
+    booktabs = T,
+    escape = F,
+    linesep= "",
+    digits=1) %>%
+  kable_styling(latex_options = c("hold_position"),full_width = F) %>%
+  column_spec(c(1:3), color = "black")
+
+#tables 10, 11, 12 and 13
+data.frame(adjusted_mort$adj.strata) %>%
+  set_names(c("Region","Deaths","Population","Mortality Rate","Lower","Upper")) %>%
+  kable(
+    booktabs = T,
+    escape = F,
+    linesep= "",
+    digits=1) %>%
+  kable_styling(latex_options = c("hold_position"),full_width = F) %>%
+  column_spec(c(1:6), color = "black")
+
+data.frame(adjusted_inci$adj.strata) %>%
+  set_names(c("Region","Cases","Population","Incidence Rate","Lower","Upper")) %>%
+  kable(
+    booktabs = T,
+    escape = F,
+    linesep= "",
+    digits=1) %>%
+  kable_styling(latex_options = c("hold_position"),full_width = F) %>%
+  column_spec(c(1:6), color = "black")
+
+data.frame(adjusted_cfr$adj.strata) %>%
+  set_names(c("Region","Deaths","Cases","Case-fatality Rate","Lower","Upper")) %>%
+  kable(
+    booktabs = T,
+    escape = F,
+    linesep= "",
+    digits=1) %>%
+  kable_styling(latex_options = c("hold_position"),full_width = F) %>%
+  column_spec(c(1:6), color = "black")
+
+data.frame(adjusted_ypll$adj.strata) %>%
+  set_names(c("","Crude YPLL","Population","YPLL Rate","Lower","Upper")) %>%
+  kable(
+    booktabs = T,
+    escape = F,
+    linesep= "",
+    digits=1) %>%
+  kable_styling(latex_options = c("hold_position"),full_width = F) %>%
+  column_spec(c(1:6), color = "black")
+
+```
+
+
